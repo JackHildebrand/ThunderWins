@@ -1,0 +1,8 @@
+pandas==2.3.3
+numpy==2.0.2
+scikit-learn==1.6.1
+nba_api==1.10.2
+streamlit==1.50.0
+plotly==6.9.0
+joblib==1.5.3
+requests==2.32.5
