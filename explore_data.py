@@ -16,6 +16,21 @@ def get_season_games(season):
     )
     return gf.get_data_frames()[0]
 
+def filter_valid_okc_rows(df, verbose=True):
+    """Every row should be OKC's OWN box score, so MATCHUP should always
+    start with "OKC" (e.g. "OKC vs. DAL" or "OKC @ DAL"). NBA Cup
+    knockout-round games have occasionally come back from LeagueGameFinder
+    as the OPPONENT's box score instead (wrong team, wrong WL/PTS entirely)
+    -- drop those rather than train on corrupted labels."""
+    bad_rows = df[~df['MATCHUP'].str.startswith('OKC')]
+    if len(bad_rows) > 0:
+        if verbose:
+            print(f"Dropping {len(bad_rows)} malformed row(s) where the API returned "
+                  f"the opponent's box score instead of OKC's:")
+            print(bad_rows[['GAME_DATE', 'MATCHUP', 'WL', 'PTS']])
+        df = df[df['MATCHUP'].str.startswith('OKC')].reset_index(drop=True)
+    return df
+
 def get_multi_season_games(seasons):
     """Pull and combine multiple seasons, oldest to newest."""
     all_games = []
@@ -28,19 +43,7 @@ def get_multi_season_games(seasons):
     combined = pd.concat(all_games, ignore_index=True)
     combined['GAME_DATE'] = pd.to_datetime(combined['GAME_DATE'])
     combined = combined.sort_values('GAME_DATE').reset_index(drop=True)
-
-    # Sanity check: every row should be OKC's OWN box score, so MATCHUP
-    # should always start with "OKC" (e.g. "OKC vs. DAL" or "OKC @ DAL").
-    # NBA Cup knockout-round games have occasionally come back from this
-    # endpoint as the OPPONENT's box score instead (wrong team, wrong
-    # WL/PTS entirely) -- drop those rather than train on corrupted labels.
-    bad_rows = combined[~combined['MATCHUP'].str.startswith('OKC')]
-    if len(bad_rows) > 0:
-        print(f"Dropping {len(bad_rows)} malformed row(s) where the API returned "
-              f"the opponent's box score instead of OKC's:")
-        print(bad_rows[['GAME_DATE', 'MATCHUP', 'WL', 'PTS']])
-        combined = combined[combined['MATCHUP'].str.startswith('OKC')].reset_index(drop=True)
-
+    combined = filter_valid_okc_rows(combined)
     return combined
 
 if __name__ == "__main__":

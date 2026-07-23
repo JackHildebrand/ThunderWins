@@ -1,5 +1,7 @@
 # OKC Thunder Game Predictor
 
+![Tests](https://github.com/JackHildebrand/ThunderWins/actions/workflows/tests.yml/badge.svg)
+
 A machine learning model that predicts Oklahoma City Thunder win probability for
 upcoming games, built from scratch on live NBA.com data. Includes a Streamlit web
 app for interactive predictions and a full backtest/methodology writeup.
@@ -52,6 +54,7 @@ fixed along the way.
 | `opponent_stars.py` | Identifies and tracks each opponent's leading scorer |
 | `live_injuries.py` | Live injury-report cross-reference (ESPN, unofficial) |
 | `dataset.py` | Assembles the full engineered dataset from all of the above |
+| `weighting.py` | Recency-weighting logic, pulled out as a pure function for testability |
 | `train_model.py` | Backtests Logistic Regression vs. Random Forest by season, including a point-margin (spread) regressor |
 | `build_validation_results.py` | Precomputes backtest results for the web app |
 | `build_live_data_cache.py` | Precomputes 2025-26 season stats/leading scorers, so live predictions don't depend on reaching NBA.com's stats API (which occasionally blocks cloud-hosted servers) |
@@ -71,6 +74,20 @@ python3 predict_upcoming.py           # train the final model
 python3 build_validation_results.py   # precompute backtest results for the app
 streamlit run app.py
 ```
+
+## Testing
+
+```bash
+pip install pytest
+pytest tests/ -v
+```
+
+29 tests, all pure/offline (no network calls, run in under a second) -- they cover
+the anti-leakage logic directly (rolling averages excluding a game's own result,
+resets across season boundaries), plus regression tests for two real bugs caught
+during development: a corrupted-data row from a mislabeled API response, and an
+accuracy collapse from mixing up the backtest and production player lists. CI runs
+this suite on every push via GitHub Actions (`.github/workflows/tests.yml`).
 
 ## Known limitations
 

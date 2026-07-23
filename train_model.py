@@ -5,6 +5,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.metrics import accuracy_score, mean_absolute_error
 
 from dataset import build_dataset, BACKTEST_PLAYERS
+from weighting import recency_weights
 
 # Experiment: does dropping the oldest, least-relevant seasons help?
 # 2019-20/2020-21 were the post-Westbrook rebuild -- SGA is the only player
@@ -23,12 +24,6 @@ EXCLUDE_SEASONS = []  # tried excluding ['2019-20', '2020-21'] -- made things
 df, seasons_all, stats_table, feature_cols = build_dataset(BACKTEST_PLAYERS, exclude_seasons=EXCLUDE_SEASONS)
 
 
-def recency_weights(train_seasons, test_season, decay=0.6):
-    """Older seasons get exponentially less weight."""
-    test_idx = seasons_all.index(test_season)
-    return train_seasons.map(lambda s: decay ** (test_idx - seasons_all.index(s)))
-
-
 def evaluate(model_builder, test_seasons):
     results = []
     for test_season in test_seasons:
@@ -38,7 +33,7 @@ def evaluate(model_builder, test_seasons):
         X_test, y_test = df.loc[test_mask, feature_cols], df.loc[test_mask, 'WIN']
         if len(X_train) == 0 or len(X_test) == 0:
             continue
-        weights = recency_weights(df.loc[train_mask, 'SEASON'], test_season)
+        weights = recency_weights(df.loc[train_mask, 'SEASON'], test_season, seasons_all)
         model = model_builder()
         model.fit(X_train, y_train, **({'logisticregression__sample_weight': weights}
                                         if hasattr(model, 'named_steps') else {'sample_weight': weights}))
@@ -62,7 +57,7 @@ def evaluate_spread(test_seasons, decay=0.6):
         X_test, y_test = df.loc[test_mask, feature_cols], df.loc[test_mask, 'PLUS_MINUS']
         if len(X_train) == 0 or len(X_test) == 0:
             continue
-        weights = recency_weights(df.loc[train_mask, 'SEASON'], test_season)
+        weights = recency_weights(df.loc[train_mask, 'SEASON'], test_season, seasons_all)
         model = RandomForestRegressor(n_estimators=200, max_depth=4, random_state=42)
         model.fit(X_train, y_train, sample_weight=weights)
         preds = model.predict(X_test)
