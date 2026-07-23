@@ -4,7 +4,7 @@ A machine learning model that predicts Oklahoma City Thunder win probability for
 upcoming games, built from scratch on live NBA.com data. Includes a Streamlit web
 app for interactive predictions and a full backtest/methodology writeup.
 
-**Live demo:** _add your Streamlit Cloud URL here after deploying_
+**Live demo:** https://tuhunderwins-ecw4tngqkqytiuuugmhpdi.streamlit.app/
 
 ## What this is
 
