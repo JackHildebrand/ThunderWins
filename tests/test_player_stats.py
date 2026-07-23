@@ -45,7 +45,14 @@ def test_roll_pts_defaults_to_zero_before_first_ever_appearance():
     before their debut -- those should be 0, not NaN or a fabricated
     value, and definitely shouldn't drop the row."""
     team_df = make_team_df(['1', '2'], ['2019-10-20', '2019-10-22'])
-    player_log = pd.DataFrame({'GAME_ID': [], 'GAME_DATE': pd.to_datetime([]), 'STAR_ROLL_PTS': []})
+    # Explicit dtype on the empty GAME_DATE column: pandas infers a
+    # different datetime precision for an empty list vs. a populated one
+    # depending on version, and merge_asof requires an exact dtype match.
+    player_log = pd.DataFrame({
+        'GAME_ID': pd.Series([], dtype=object),
+        'GAME_DATE': pd.Series([], dtype=team_df['GAME_DATE'].dtype),
+        'STAR_ROLL_PTS': pd.Series([], dtype=float),
+    })
     result = add_player_features(team_df, player_log, label='TEST')
     assert (result['TEST_ROLL_PTS'] == 0.0).all()
     assert (result['TEST_PLAYED'] == 0).all()
