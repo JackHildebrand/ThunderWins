@@ -5,11 +5,8 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from nba_api.stats.static import teams as nba_teams
 
 from dataset import build_dataset, PRODUCTION_PLAYERS
-from opponent_strength import get_season_team_stats
-from opponent_stars import get_season_leading_scorers_with_names
-from player_stats import get_player_id
 from live_injuries import get_current_injuries, players_out as espn_players_out
-from nba_api.stats.endpoints import playergamelog
+from build_live_data_cache import LIVE_DATA_CACHE_FILE
 
 MODEL_FILE = 'thunder_model.joblib'
 PLAYER_LABELS = [label for _, label in PRODUCTION_PLAYERS]
@@ -43,14 +40,6 @@ def train_final_model(decay=0.6):
     return model, spread_model, df, feature_cols
 
 
-def _recent_scoring_avg(player_id, season='2025-26'):
-    log = playergamelog.PlayerGameLog(player_id=player_id, season=season).get_data_frames()[0]
-    if len(log) == 0:
-        return 0.0
-    recent = log.sort_values('Game_ID')['PTS'].tail(10).tolist()
-    return sum(recent) / len(recent) if recent else 0.0
-
-
 def predict_game(opponent_abbr, is_home, players_out=None, opp_star_out=None):
     """Predict OKC's win probability (and point margin) for an upcoming
     2026-27 game. Returns a dict:
@@ -74,6 +63,13 @@ def predict_game(opponent_abbr, is_home, players_out=None, opp_star_out=None):
     df, feature_cols = saved['df'], saved['feature_cols']
     manual_out = set(players_out or [])
 
+    # Precomputed (see build_live_data_cache.py) rather than fetched live --
+    # 2025-26 is complete, so this data is static, and NOT calling NBA.com's
+    # stats API here avoids the occasional cloud-IP blocking that endpoint
+    # does. Injury status below is the one thing that genuinely changes day
+    # to day, and comes from ESPN, not NBA.com, so it stays live.
+    live_cache = joblib.load(LIVE_DATA_CACHE_FILE)
+
     all_injuries = get_current_injuries()
 
     # Auto-detect which tracked OKC players are listed as literally "Out".
@@ -89,7 +85,7 @@ def predict_game(opponent_abbr, is_home, players_out=None, opp_star_out=None):
     median_rest = df['REST_DAYS'].median()
 
     # "Prior season" for a 2026-27 game is 2025-26, which is now complete.
-    season_2526 = get_season_team_stats('2025-26')
+    season_2526 = live_cache['season_2526_team_stats']
     opp_stats = season_2526.get(opponent_abbr, {})
     team_stats = season_2526.get('OKC', {})
 
@@ -115,7 +111,7 @@ def predict_game(opponent_abbr, is_home, players_out=None, opp_star_out=None):
         features[f'{label}_PLAYED'] = 0 if label in final_players_out else 1
         features[f'{label}_ROLL_PTS'] = 0.0 if label in final_players_out else last_row[f'{label}_ROLL_PTS']
 
-    opp_star_id, opp_star_name = get_season_leading_scorers_with_names('2025-26').get(opponent_abbr, (None, None))
+    opp_star_id, opp_star_name = live_cache['leading_scorers'].get(opponent_abbr, (None, None))
 
     if opp_star_out is None and opp_star_name is not None:
         opp_nickname = TEAM_ABBR_TO_NICKNAME.get(opponent_abbr, opponent_abbr)
@@ -126,7 +122,7 @@ def predict_game(opponent_abbr, is_home, players_out=None, opp_star_out=None):
 
     opp_star_roll_pts = 0.0
     if opp_star_id is not None and not opp_star_out:
-        opp_star_roll_pts = _recent_scoring_avg(opp_star_id)
+        opp_star_roll_pts = live_cache['opp_star_recent_form'].get(opponent_abbr, 0.0)
     features['OPP_STAR_PLAYED'] = 0 if opp_star_out else 1
     features['OPP_STAR_ROLL_PTS'] = opp_star_roll_pts
 

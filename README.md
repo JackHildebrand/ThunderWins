@@ -52,9 +52,10 @@ fixed along the way.
 | `opponent_stars.py` | Identifies and tracks each opponent's leading scorer |
 | `live_injuries.py` | Live injury-report cross-reference (ESPN, unofficial) |
 | `dataset.py` | Assembles the full engineered dataset from all of the above |
-| `train_model.py` | Backtests Logistic Regression vs. Random Forest by season |
+| `train_model.py` | Backtests Logistic Regression vs. Random Forest by season, including a point-margin (spread) regressor |
 | `build_validation_results.py` | Precomputes backtest results for the web app |
-| `predict_upcoming.py` | Trains the final production model, predicts new games |
+| `build_live_data_cache.py` | Precomputes 2025-26 season stats/leading scorers, so live predictions don't depend on reaching NBA.com's stats API (which occasionally blocks cloud-hosted servers) |
+| `predict_upcoming.py` | Trains the final production model (classifier + spread regressor), predicts new games with SHAP explanations |
 | `app.py` / `pages/1_Model_Validation.py` | Streamlit web app |
 
 ## Running locally
@@ -65,6 +66,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 python3 explore_data.py               # pull raw data
+python3 build_live_data_cache.py      # precompute current-season data for live predictions
 python3 predict_upcoming.py           # train the final model
 python3 build_validation_results.py   # precompute backtest results for the app
 streamlit run app.py

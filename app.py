@@ -45,9 +45,9 @@ if st.button("Predict", type="primary", use_container_width=True):
                      "to train and save thunder_model.joblib.")
             st.stop()
         except Exception as e:
-            st.error(f"Couldn't reach NBA.com's live stats API ({e}). This can happen on "
-                     f"cloud-hosted servers that NBA.com occasionally blocks -- if this "
-                     f"persists on the deployed app, it likely still works when run locally.")
+            st.error(f"Prediction failed ({e}). Most live data is precomputed and cached, "
+                     f"but the injury check still calls ESPN's feed live -- if that's "
+                     f"unreachable this will fail. Try again in a moment.")
             st.stop()
 
     win_prob = result['win_prob']
