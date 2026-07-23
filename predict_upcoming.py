@@ -1,6 +1,7 @@
 import pandas as pd
 import joblib
-from sklearn.ensemble import RandomForestClassifier
+import shap
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from nba_api.stats.static import teams as nba_teams
 
 from dataset import build_dataset, PRODUCTION_PLAYERS
@@ -19,7 +20,8 @@ def train_final_model(decay=0.6):
     """Train on ALL available history using the CURRENT roster's tracked
     players (PRODUCTION_PLAYERS), weighted so the most recently completed
     season counts most -- this is the model that actually predicts 2026-27
-    games, so there's no held-out test season here."""
+    games, so there's no held-out test season here. Trains both the
+    win/loss classifier and a point-margin (spread) regressor."""
     df, seasons_all, stats_table, feature_cols = build_dataset(PRODUCTION_PLAYERS)
     reference_idx = len(seasons_all)  # one step beyond the last known season
     weights = df['SEASON'].map(lambda s: decay ** (reference_idx - seasons_all.index(s)))
@@ -27,9 +29,18 @@ def train_final_model(decay=0.6):
     model = RandomForestClassifier(n_estimators=200, max_depth=4, random_state=42)
     model.fit(df[feature_cols], df['WIN'], sample_weight=weights)
 
-    joblib.dump({'model': model, 'df': df, 'seasons_all': seasons_all, 'feature_cols': feature_cols}, MODEL_FILE)
+    spread_model = RandomForestRegressor(n_estimators=200, max_depth=4, random_state=42)
+    spread_model.fit(df[feature_cols], df['PLUS_MINUS'], sample_weight=weights)
+
+    joblib.dump({
+        'model': model,
+        'spread_model': spread_model,
+        'df': df,
+        'seasons_all': seasons_all,
+        'feature_cols': feature_cols,
+    }, MODEL_FILE)
     print(f"Trained on {len(df)} games across {len(seasons_all)} seasons. Saved to {MODEL_FILE}.")
-    return model, df, feature_cols
+    return model, spread_model, df, feature_cols
 
 
 def _recent_scoring_avg(player_id, season='2025-26'):
@@ -41,7 +52,12 @@ def _recent_scoring_avg(player_id, season='2025-26'):
 
 
 def predict_game(opponent_abbr, is_home, players_out=None, opp_star_out=None):
-    """Predict OKC's win probability for an upcoming 2026-27 game.
+    """Predict OKC's win probability (and point margin) for an upcoming
+    2026-27 game. Returns a dict:
+      win_prob          -- probability OKC wins (0-1)
+      predicted_margin  -- predicted point margin, positive = OKC wins by that much
+      contributions     -- pandas Series of SHAP values per feature, toward
+                            the win prediction, sorted by absolute impact
 
     opponent_abbr: 3-letter team code, e.g. 'LAL'
     is_home: True if OKC is hosting
@@ -53,7 +69,9 @@ def predict_game(opponent_abbr, is_home, players_out=None, opp_star_out=None):
         leading scorer is out; leave as None to auto-detect from the feed.
     """
     saved = joblib.load(MODEL_FILE)
-    model, df, feature_cols = saved['model'], saved['df'], saved['feature_cols']
+    model = saved['model']
+    spread_model = saved['spread_model']
+    df, feature_cols = saved['df'], saved['feature_cols']
     manual_out = set(players_out or [])
 
     all_injuries = get_current_injuries()
@@ -114,7 +132,22 @@ def predict_game(opponent_abbr, is_home, players_out=None, opp_star_out=None):
 
     X = pd.DataFrame([features])[feature_cols]
     win_prob = model.predict_proba(X)[0][1]
-    return win_prob
+    predicted_margin = spread_model.predict(X)[0]
+
+    # SHAP explains THIS specific prediction: how much each feature pushed
+    # the win probability up or down from the model's average prediction,
+    # not just which features matter in general (that's the feature
+    # importance chart on the Model Validation page -- this is per-game).
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer.shap_values(X)
+    contributions = pd.Series(shap_values[0, :, 1], index=feature_cols)
+    contributions = contributions.reindex(contributions.abs().sort_values(ascending=False).index)
+
+    return {
+        'win_prob': win_prob,
+        'predicted_margin': predicted_margin,
+        'contributions': contributions,
+    }
 
 
 if __name__ == "__main__":
@@ -122,9 +155,11 @@ if __name__ == "__main__":
 
     print("\nExample predictions (illustrative -- run once the real 2026-27 "
           "schedule is out):")
-    p1 = predict_game('UTA', is_home=True)
-    print(f"  Home vs. UTA, full strength:            {p1:.1%}")
-    p2 = predict_game('DEN', is_home=False)
-    print(f"  Away vs. DEN, full strength:             {p2:.1%}")
-    p3 = predict_game('DEN', is_home=False, players_out=['SGA'])
-    print(f"  Away vs. DEN, SGA out:                   {p3:.1%}")
+    r1 = predict_game('UTA', is_home=True)
+    print(f"  Home vs. UTA, full strength:   win={r1['win_prob']:.1%}  margin={r1['predicted_margin']:+.1f}")
+    r2 = predict_game('DEN', is_home=False)
+    print(f"  Away vs. DEN, full strength:   win={r2['win_prob']:.1%}  margin={r2['predicted_margin']:+.1f}")
+    r3 = predict_game('DEN', is_home=False, players_out=['SGA'])
+    print(f"  Away vs. DEN, SGA out:         win={r3['win_prob']:.1%}  margin={r3['predicted_margin']:+.1f}")
+    print("\nTop factors for the last prediction:")
+    print(r3['contributions'].head(5))

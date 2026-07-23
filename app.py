@@ -1,4 +1,5 @@
 import streamlit as st
+import plotly.graph_objects as go
 from nba_api.stats.static import teams as nba_teams
 
 from predict_upcoming import predict_game
@@ -38,7 +39,7 @@ if st.button("Predict", type="primary", use_container_width=True):
     opponent_abbr = team_options[opponent_name]
     with st.spinner("Pulling live data and predicting..."):
         try:
-            win_prob = predict_game(opponent_abbr, is_home=(location == "Home"), players_out=manual_out)
+            result = predict_game(opponent_abbr, is_home=(location == "Home"), players_out=manual_out)
         except FileNotFoundError:
             st.error("No trained model found. Run `python3 predict_upcoming.py` once first "
                      "to train and save thunder_model.joblib.")
@@ -49,7 +50,12 @@ if st.button("Predict", type="primary", use_container_width=True):
                      f"persists on the deployed app, it likely still works when run locally.")
             st.stop()
 
-    st.metric("OKC Win Probability", f"{win_prob:.1%}")
+    win_prob = result['win_prob']
+    margin = result['predicted_margin']
+
+    m1, m2 = st.columns(2)
+    m1.metric("OKC Win Probability", f"{win_prob:.1%}")
+    m2.metric("Predicted Margin", f"{'OKC +' if margin >= 0 else 'OKC '}{margin:.1f}")
     st.progress(win_prob)
 
     if win_prob >= 0.6:
@@ -58,6 +64,31 @@ if st.button("Predict", type="primary", use_container_width=True):
         st.warning(f"Model favors the {opponent_name} in this matchup.")
     else:
         st.info("Model sees this as close to a coin flip.")
+
+    st.caption("Win probability and margin come from two separately trained models "
+               "(a classifier and a regressor), so they can occasionally point in "
+               "slightly different directions on close games -- that's expected, not a bug.")
+
+    st.subheader("Why the model predicted this")
+    st.caption("SHAP values for this specific prediction -- how much each factor pushed "
+               "the win probability up (blue) or down (red) from the model's average "
+               "prediction. This is different from the Model Validation page's feature "
+               "importance, which shows what matters *in general*, not for this one game.")
+
+    top_contributions = result['contributions'].head(8).sort_values()
+    colors = ['#d62728' if v < 0 else '#1f77b4' for v in top_contributions.values]
+    fig = go.Figure(go.Bar(
+        x=top_contributions.values,
+        y=top_contributions.index,
+        orientation='h',
+        marker_color=colors,
+    ))
+    fig.update_layout(
+        xaxis_title="Impact on win probability",
+        height=350,
+        margin=dict(l=10, r=10, t=10, b=10),
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
 st.divider()
 st.caption("See the **Model Validation** page (sidebar) for backtest accuracy, feature "

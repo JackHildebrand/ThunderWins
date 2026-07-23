@@ -12,12 +12,20 @@ rf_results = tm.evaluate(
     lambda: RandomForestClassifier(n_estimators=200, max_depth=4, random_state=42),
     tm.test_seasons
 )
+spread_results = tm.evaluate_spread(tm.test_seasons)
 
 model = RandomForestClassifier(n_estimators=200, max_depth=4, random_state=42)
 model.fit(tm.df[tm.feature_cols], tm.df['WIN'])
 importances = pd.Series(model.feature_importances_, index=tm.feature_cols).sort_values(ascending=False)
 
-joblib.dump({'rf_results': rf_results, 'importances': importances}, 'validation_results.joblib')
+joblib.dump({
+    'rf_results': rf_results,
+    'spread_results': spread_results,
+    'importances': importances,
+}, 'validation_results.joblib')
+
 print("Saved validation_results.joblib")
 for season, acc, baseline in rf_results:
     print(f"  {season}: accuracy={acc:.1%}  baseline={baseline:.1%}")
+for season, mae, baseline_mae in spread_results:
+    print(f"  {season}: spread MAE={mae:.1f}  baseline MAE={baseline_mae:.1f}")

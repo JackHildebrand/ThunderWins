@@ -36,6 +36,7 @@ except FileNotFoundError:
     st.stop()
 
 rf_results, importances = saved['rf_results'], saved['importances']
+spread_results = saved.get('spread_results')
 
 st.subheader("Backtest Accuracy vs. Baseline")
 st.caption("Baseline = always predicting the majority outcome (OKC's actual win rate that season). "
@@ -50,6 +51,24 @@ fig.add_trace(go.Bar(name='Model Accuracy', x=seasons, y=acc))
 fig.add_trace(go.Bar(name='Baseline', x=seasons, y=baseline))
 fig.update_layout(barmode='group', yaxis_tickformat='.0%', yaxis_range=[0, 1])
 st.plotly_chart(fig, use_container_width=True)
+
+if spread_results:
+    st.subheader("Point Margin (Spread) Accuracy")
+    st.caption("A separate regression model predicting the actual point margin, not just "
+               "win/loss. Baseline = always predicting the training set's average margin. "
+               "Lower is better (mean absolute error, in points).")
+    sp_seasons = [r[0] for r in spread_results]
+    mae = [r[1] for r in spread_results]
+    sp_baseline = [r[2] for r in spread_results]
+    fig2 = go.Figure()
+    fig2.add_trace(go.Bar(name='Model MAE', x=sp_seasons, y=mae))
+    fig2.add_trace(go.Bar(name='Baseline MAE', x=sp_seasons, y=sp_baseline))
+    fig2.update_layout(barmode='group', yaxis_title='Mean Absolute Error (points)')
+    st.plotly_chart(fig2, use_container_width=True)
+    st.caption("Notably, the spread model beats its baseline in every season tested, "
+               "including 2024-25 -- where the win/loss classifier struggles most. Predicting "
+               "a continuous margin turned out to be more robust to that season's distribution "
+               "shift than predicting the binary outcome.")
 
 st.subheader("Feature Importance")
 st.caption("Which inputs the model relies on most, from the final trained Random Forest.")
